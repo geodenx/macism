@@ -1,0 +1,52 @@
+name: Sync upstream and rebase codeql
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rebase-codeql:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout codeql
+        uses: actions/checkout@v4
+        with:
+          ref: codeql
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream and fetch
+        run: |
+          git remote add upstream https://github.com/laishulu/macism.git || true
+          git fetch upstream master
+          git fetch origin codeql
+
+      - name: Check if upstream changed vs last rebased base
+        id: check
+        run: |
+          BASE=$(git merge-base codeql upstream/master)
+          UPSTREAM=$(git rev-parse upstream/master)
+
+          echo "base=$BASE" >> $GITHUB_OUTPUT
+          echo "upstream=$UPSTREAM" >> $GITHUB_OUTPUT
+
+          if [ "$BASE" = "$UPSTREAM" ]; then
+            echo "updated=false" >> $GITHUB_OUTPUT
+          else
+            echo "updated=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Rebase codeql onto upstream/master
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          git checkout codeql
+          git rebase upstream/master
+          git push origin codeql --force-with-lease
